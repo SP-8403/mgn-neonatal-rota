@@ -5,42 +5,50 @@
 <title>MGN Neonatal Day Allocation Agent</title>
 
 <style>
+
 body{
-  font-family: Arial, Helvetica, sans-serif;
-  margin:40px;
-  background:#f5f7fb;
+font-family: Arial;
+margin:40px;
+background:#f5f7fb;
 }
-h1{ color:#1c3d5a; }
 
 button{
-  padding:12px 20px;
-  background:#1f6feb;
-  color:white;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
-  font-size:16px;
+padding:12px 20px;
+background:#1f6feb;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
 }
 
 table{
-  margin-top:30px;
-  border-collapse:collapse;
-  width:100%;
-  background:white;
+margin-top:30px;
+border-collapse:collapse;
+width:100%;
+background:white;
 }
+
 th,td{
-  border:1px solid #ccc;
-  padding:10px;
-  text-align:center;
+border:1px solid #ccc;
+padding:10px;
+text-align:center;
 }
+
 th{
-  background:#1f6feb;
-  color:white;
+background:#1f6feb;
+color:white;
 }
-.small{
-  color:#555;
-  margin-top:6px;
+
+.postcall{
+background:#ffdddd;
+color:#b00000;
+font-weight:bold;
 }
+
+.editable{
+background:#fffef2;
+}
+
 </style>
 </head>
 
@@ -49,207 +57,159 @@ th{
 <h1>MGN Neonatal Day Allocation Agent</h1>
 
 <button onclick="runAgent()">Generate Allocation</button>
-<div class="small">Reads the sheet → computes Post-Call → applies rules → renders the table.</div>
 
 <div id="rota"></div>
 
 <script>
 
-// === Google Sheet CSV exports (reliable for JS) ===
 const rotaURL =
-"https://docs.google.com/spreadsheets/d/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/export?format=csv&gid=917931031";
+"https://docs.google.com/spreadsheets/d/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/export?format=csv&gid=917931031"
 
-const staffURL =
-"https://docs.google.com/spreadsheets/d/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/export?format=csv&gid=1145965659";
+function parseCSV(text){
 
-// === Staff pools (first names used in output) ===
-const seniorRegistrars=["Chinelo","Naa"];
-const registrars=["Brent","Waynne","Herlinde"];
-const medicalOfficers=["Shannon","Sanam"];
-const interns=["Lezaro","Mashudu","Elvira","Mehreen","Nishoka","LeeAnne"];
+let rows = text.trim().split("\n")
+let headers = rows[0].split(",")
 
-const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday"];
+return rows.slice(1).map(r => {
 
-// === Helpers ===
+let vals = r.split(",")
+
+let obj = {}
+
+headers.forEach((h,i)=>{
+obj[h.trim()] = vals[i]
+})
+
+return obj
+
+})
+
+}
+
 function firstName(name){
-  if(!name) return "";
-  return name.split(" ")[0].trim();
+if(!name) return ""
+return name.split(" ")[0]
 }
 
 function splitCell(cell){
-  if(!cell || cell.trim()==="") return [];
-  if(cell.includes("/")){
-    return cell.split("/").map(x=>x.trim());
-  }
-  return [cell.trim()];
+
+if(!cell) return []
+
+if(cell.includes("/")){
+return cell.split("/").map(x=>x.trim())
 }
 
-function parseCSV(text){
-  const rows = text.trim().split("\n");
-  const headers = rows[0].split(",").map(h=>h.trim());
-  return rows.slice(1).map(line=>{
-    const vals = line.split(",");
-    const obj={};
-    headers.forEach((h,i)=> obj[h]= (vals[i]||"").trim() );
-    return obj;
-  });
+return [cell.trim()]
+
 }
 
-function safe(obj, key){
-  // tolerate minor header variations
-  return obj[key] ?? obj[key+" "] ?? "";
-}
-
-// === Allocation logic ===
-function allocateDay(day, postCall){
-  let available = [
-    ...seniorRegistrars,
-    ...registrars,
-    ...medicalOfficers,
-    ...interns
-  ];
-
-  // remove post-call
-  available = available.filter(x=>!postCall[day].includes(x));
-
-  const areas={
-    "ICU 1":[],
-    "ICU 2":[],
-    "High Care":[],
-    "Pre-KMC / KMC":[],
-    "Theatre":[],
-    "Theatre Cover":[],
-    "Post-Nates":[]
-  };
-
-  // ICU1 preference: Chinelo/Naa if available
-  let icu1 = ["Chinelo","Naa"].filter(x=>available.includes(x));
-  if(icu1.length===0){
-    // fallback: any registrar/senior registrar
-    const fb = available.find(x=> seniorRegistrars.includes(x) || registrars.includes(x));
-    if(fb) icu1=[fb];
-  }
-  areas["ICU 1"]=icu1;
-  available = available.filter(x=>!icu1.includes(x));
-
-  // ICU2: registrar or MO
-  let icu2 = available.find(x=> registrars.includes(x) || medicalOfficers.includes(x));
-  if(!icu2) icu2 = available[0];
-  areas["ICU 2"]=[icu2];
-  available = available.filter(x=>x!==icu2);
-
-  // High Care: must be MO
-  let hc = available.find(x=> medicalOfficers.includes(x));
-  if(!hc) hc = available.find(x=> registrars.includes(x)) || available[0];
-  areas["High Care"]=[hc];
-  available = available.filter(x=>x!==hc);
-
-  // Pre-KMC: intern or MO
-  let kmc = available.find(x=> interns.includes(x) || medicalOfficers.includes(x));
-  if(!kmc) kmc = available[0];
-  areas["Pre-KMC / KMC"]=[kmc];
-  available = available.filter(x=>x!==kmc);
-
-  // Theatre: junior (intern/MO) and NEVER Waynne
-  let theatre = available.find(x=> (interns.includes(x) || medicalOfficers.includes(x)) && x!=="Waynne");
-  if(!theatre) theatre = available.find(x=> x!=="Waynne") || available[0];
-  areas["Theatre"]=[theatre];
-  available = available.filter(x=>x!==theatre);
-
-  // Theatre cover = ICU2
-  areas["Theatre Cover"]=[icu2];
-
-  // Remaining staff
-  areas["Post-Nates"]=available;
-
-  return areas;
-}
-
-// === Main ===
 async function runAgent(){
-  try{
-    document.getElementById("rota").innerHTML="Loading…";
 
-    const rotaCSV = await fetch(rotaURL).then(r=>r.text());
-    const staffCSV = await fetch(staffURL).then(r=>r.text());
+document.getElementById("rota").innerHTML="Loading..."
 
-    const rotaData = parseCSV(rotaCSV);
-    const staffData = parseCSV(staffCSV);
+let rotaCSV = await fetch(rotaURL).then(r=>r.text())
 
-    // staff first names
-    const staffList = staffData
-      .map(r=> firstName(r["Name and Surname"]))
-      .filter(Boolean);
+let rotaData = parseCSV(rotaCSV)
 
-    // build on-call per day
-    function extractOnCall(row){
-      let names=[];
-      names = names.concat(splitCell(safe(row,"Registrar On call")));
-      names = names.concat(splitCell(safe(row,"Intern on call")));
-      names = names.concat(splitCell(safe(row,"Medical Officer on call")));
-      names = names.map(firstName);
-      // keep only MGN staff
-      names = names.filter(n=> staffList.includes(n));
-      return names;
-    }
+let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
-    // find Sunday for Monday post-call
-    const sundayRow = rotaData.find(r=> r.Day==="Sunday") || {};
-    const onCall={};
-    onCall["Monday"]= extractOnCall(sundayRow);
+let week = rotaData.filter(r=>days.includes(r.Day))
 
-    // map the weekdays
-    rotaData
-      .filter(r=> DAYS.includes(r.Day))
-      .forEach(r=> onCall[r.Day] = extractOnCall(r));
+let sunday = rotaData.find(r=>r.Day==="Sunday")
 
-    // compute Post-Call
-    const postCall={};
-    DAYS.forEach((d,i)=>{
-      if(i===0){
-        postCall[d] = onCall["Monday"] || [];
-      }else{
-        postCall[d] = onCall[DAYS[i]] || [];
-      }
-    });
+function extract(row){
 
-    // render table
-    const AREAS=[
-      "ICU 1",
-      "ICU 2",
-      "High Care",
-      "Pre-KMC / KMC",
-      "Theatre",
-      "Theatre Cover",
-      "Post-Nates",
-      "Post-Call"
-    ];
+let names=[]
 
-    let html="<table>";
-    html+="<tr><th>Area</th>";
-    DAYS.forEach(d=> html+=`<th>${d}</th>`);
-    html+="</tr>";
+names=names.concat(splitCell(row["Registrar On call"]))
+names=names.concat(splitCell(row["Intern on call"]))
+names=names.concat(splitCell(row["Medical Officer on call"]))
 
-    AREAS.forEach(area=>{
-      html+="<tr>";
-      html+=`<td>${area}</td>`;
-      DAYS.forEach(day=>{
-        if(area==="Post-Call"){
-          html+=`<td>${(postCall[day]||[]).join(" & ")}</td>`;
-        }else{
-          const alloc = allocateDay(day, postCall);
-          html+=`<td>${(alloc[area]||[]).join(" & ")}</td>`;
-        }
-      });
-      html+="</tr>";
-    });
+return names.map(firstName)
 
-    html+="</table>";
-    document.getElementById("rota").innerHTML=html;
+}
 
-  }catch(err){
-    document.getElementById("rota").innerHTML = "Error: "+err;
-  }
+let onCall={}
+
+onCall["Monday"]=extract(sunday)
+
+week.forEach(r=>{
+onCall[r.Day]=extract(r)
+})
+
+let postCall={}
+
+days.forEach((d,i)=>{
+
+if(i===0){
+postCall[d]=onCall["Monday"]
+}else{
+postCall[d]=onCall[days[i]]
+}
+
+})
+
+renderTable(onCall,postCall)
+
+}
+
+function renderTable(onCall,postCall){
+
+let areas=[
+"ICU 1",
+"ICU 2",
+"High Care",
+"Pre-KMC / KMC",
+"Theatre",
+"Theatre Cover",
+"Post-Nates",
+"Post-Call",
+"On-Call"
+]
+
+let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
+
+let html="<table>"
+
+html+="<tr><th>Area</th>"
+
+days.forEach(d=>html+="<th>"+d+"</th>")
+
+html+="</tr>"
+
+areas.forEach(area=>{
+
+html+="<tr>"
+html+="<td>"+area+"</td>"
+
+days.forEach(day=>{
+
+if(area==="Post-Call"){
+
+html+="<td class='postcall'>"+(postCall[day]||[]).join(" & ")+"</td>"
+
+}
+else if(area==="On-Call"){
+
+html+="<td>"+(onCall[day]||[]).join(" & ")+"</td>"
+
+}
+else{
+
+html+="<td class='editable' contenteditable='true'></td>"
+
+}
+
+})
+
+html+="</tr>"
+
+})
+
+html+="</table>"
+
+document.getElementById("rota").innerHTML=html
+
 }
 
 </script>
