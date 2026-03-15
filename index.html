@@ -57,19 +57,9 @@ const staffURL =
 "https://opensheet.elk.sh/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/MGN%20Staff"
 
 const seniorRegistrars=["Chinelo","Naa"]
-
 const registrars=["Brent","Waynne","Herlinde"]
-
 const medicalOfficers=["Shannon","Sanam"]
-
-const interns=[
-"Lezaro",
-"Mashudu",
-"Elvira",
-"Mehreen",
-"Nishoka",
-"LeeAnne"
-]
+const interns=["Lezaro","Mashudu","Elvira","Mehreen","Nishoka","LeeAnne"]
 
 function firstName(name){
 return name.split(" ")[0]
@@ -87,7 +77,13 @@ return [cell.trim()]
 
 }
 
+function safe(row,key){
+return row[key] || row[key+" "] || ""
+}
+
 async function runAgent(){
+
+try{
 
 document.getElementById("rota").innerHTML="Loading..."
 
@@ -100,19 +96,19 @@ let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
 let weekRows = rotaData.filter(r=>days.includes(r.Day))
 
-let sundayRow = rotaData.find(r=>r.Day==="Sunday")
+let sundayRow = rotaData.find(r=>r.Day==="Sunday") || {}
 
 function extractOnCall(row){
 
 let names=[]
 
-names = names.concat(splitCell(row["Registrar On call"]||row["Registrar On call "]||""))
-names = names.concat(splitCell(row["Intern On call"]||row["Intern On call "]||""))
-names = names.concat(splitCell(row["Medical Officer on call"]||row["Medical Officer on call "]||""))
+names=names.concat(splitCell(safe(row,"Registrar On call")))
+names=names.concat(splitCell(safe(row,"Intern On call")))
+names=names.concat(splitCell(safe(row,"Medical Officer on call")))
 
-names = names.map(firstName)
+names=names.map(firstName)
 
-names = names.filter(n=>staffList.includes(n))
+names=names.filter(n=>staffList.includes(n))
 
 return names
 
@@ -140,6 +136,13 @@ postCall[d]=onCall[days[i]]||[]
 
 displayTable(postCall)
 
+}catch(err){
+
+document.getElementById("rota").innerHTML =
+"Error: "+err
+
+}
+
 }
 
 function allocateDay(day,postCall){
@@ -151,7 +154,7 @@ let available=[
 ...interns
 ]
 
-available = available.filter(x=>!postCall[day].includes(x))
+available=available.filter(x=>!postCall[day].includes(x))
 
 let areas={
 "ICU 1":[],
@@ -164,37 +167,26 @@ let areas={
 }
 
 let icu1=["Chinelo","Naa"].filter(x=>available.includes(x))
-
 areas["ICU 1"]=icu1
-
 available=available.filter(x=>!icu1.includes(x))
 
 let icu2=available.find(x=>registrars.includes(x)||medicalOfficers.includes(x))
-
 areas["ICU 2"]=[icu2]
-
 available=available.filter(x=>x!==icu2)
 
 let highcare=available.find(x=>medicalOfficers.includes(x))
-
 areas["High Care"]=[highcare]
-
 available=available.filter(x=>x!==highcare)
 
 let kmc=available.find(x=>interns.includes(x)||medicalOfficers.includes(x))
-
 areas["Pre-KMC / KMC"]=[kmc]
-
 available=available.filter(x=>x!==kmc)
 
 let theatre=available.find(x=>interns.includes(x)||medicalOfficers.includes(x))
-
 areas["Theatre"]=[theatre]
-
 available=available.filter(x=>x!==theatre)
 
 areas["Theatre Cover"]=[icu2]
-
 areas["Post-Nates"]=available
 
 return areas
@@ -217,11 +209,9 @@ let areas=[
 let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
 let html="<table>"
-
 html+="<tr><th>Area</th>"
 
 days.forEach(d=>html+="<th>"+d+"</th>")
-
 html+="</tr>"
 
 areas.forEach(area=>{
@@ -232,15 +222,10 @@ html+="<td>"+area+"</td>"
 days.forEach(day=>{
 
 if(area==="Post-Call"){
-
 html+="<td>"+(postCall[day]||[]).join(" & ")+"</td>"
-
 }else{
-
 let alloc=allocateDay(day,postCall)
-
 html+="<td>"+(alloc[area]||[]).join(" & ")+"</td>"
-
 }
 
 })
