@@ -93,9 +93,9 @@ week.forEach(row=>{
 
 let names = []
 
-names = names.concat(splitCell(row["Registrar On call"]))
-names = names.concat(splitCell(row["Intern On call"]))
-names = names.concat(splitCell(row["Medical Officer on call"]))
+names = names.concat(splitCell(row["Registrar On call"] || row["Registrar On call "] || ""))
+names = names.concat(splitCell(row["Intern On call"] || row["Intern On call "] || ""))
+names = names.concat(splitCell(row["Medical Officer on call"] || row["Medical Officer on call "] || ""))
 
 names = names.filter(n =>
 staffList.some(s => s.includes(n))
