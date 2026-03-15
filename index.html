@@ -5,7 +5,6 @@
 <title>MGN Neonatal Day Allocation Agent</title>
 
 <style>
-
 body{
 font-family: Arial, Helvetica, sans-serif;
 margin:40px;
@@ -43,7 +42,6 @@ th{
 background:#1f6feb;
 color:white;
 }
-
 </style>
 
 </head>
@@ -52,9 +50,7 @@ color:white;
 
 <h1>MGN Neonatal Day Allocation Agent</h1>
 
-<p>This tool reads the Groote Schuur hospital rota and generates neonatal daytime allocations.</p>
-
-<button onclick="runAgent()">Generate Weekly Allocation</button>
+<button onclick="runAgent()">Generate Allocation (16–20 March)</button>
 
 <div id="rota"></div>
 
@@ -99,54 +95,78 @@ return cell.split("/").map(x=>x.trim())
 
 async function runAgent(){
 
-document.getElementById("rota").innerHTML = "Loading rota..."
+document.getElementById("rota").innerHTML="Loading..."
 
 let rotaData = await fetch(rotaURL).then(r=>r.json())
 let staffData = await fetch(staffURL).then(r=>r.json())
 
-let staffList = staffData.map(x=>x["Name and Surname"])
+let staffList = staffData.map(x=>x["Name and Surname"].split(" ")[0])
 
-let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+let targetDates = [
+"16/03/2026",
+"17/03/2026",
+"18/03/2026",
+"19/03/2026",
+"20/03/2026"
+]
 
-let week = rotaData.filter(row => days.includes(row.Day))
+let weekRows = rotaData.filter(r => targetDates.includes(r.Date))
+
+let sundayRow = rotaData.find(r => r.Date==="15/03/2026")
 
 let onCall = {}
 
-week.forEach(row=>{
+function extractOnCall(row){
 
-let names = []
+let names=[]
 
-names = names.concat(splitCell(row["Registrar On call"] || row["Registrar On call "] || ""))
-names = names.concat(splitCell(row["Intern On call"] || row["Intern On call "] || ""))
-names = names.concat(splitCell(row["Medical Officer on call"] || row["Medical Officer on call "] || ""))
+names = names.concat(splitCell(row["Registrar On call"]||""))
+names = names.concat(splitCell(row["Intern On call"]||""))
+names = names.concat(splitCell(row["Medical Officer on call"]||""))
 
-names = names.filter(n =>
-staffList.some(s => s.includes(n))
-)
+names = names.map(firstName)
 
-onCall[row.Day] = names.map(firstName)
+names = names.filter(n => staffList.includes(n))
 
+return names
+}
+
+onCall["Monday"] = extractOnCall(sundayRow)
+
+weekRows.forEach(r=>{
+onCall[r.Day]=extractOnCall(r)
 })
 
-let postCall = {}
+let postCall={}
+
+let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
 days.forEach((d,i)=>{
 
 if(i===0){
-postCall[d] = []
+postCall[d]=onCall["Monday"]
 }else{
-postCall[d] = onCall[days[i-1]] || []
+postCall[d]=onCall[days[i]]
 }
 
 })
 
-displayTable(onCall,postCall)
+displayTable(postCall)
 
 }
 
-function allocateDay(day,onCall,postCall){
+function allocateDay(day,postCall){
 
-let areas = {
+let available=[
+...seniorRegistrars,
+...registrars,
+...medicalOfficers,
+...interns
+]
+
+available=available.filter(x=>!postCall[day].includes(x))
+
+let areas={
 "ICU 1":[],
 "ICU 2":[],
 "High Care":[],
@@ -156,55 +176,36 @@ let areas = {
 "Post-Nates":[]
 }
 
-let available = [
-...seniorRegistrars,
-...registrars,
-...medicalOfficers,
-...interns
-]
+let icu1=available.find(x=>seniorRegistrars.includes(x)||registrars.includes(x))
+areas["ICU 1"]=[icu1]
+available=available.filter(x=>x!==icu1)
 
-available = available.filter(x => !postCall[day].includes(x))
+let icu2=available.find(x=>registrars.includes(x)||medicalOfficers.includes(x))
+areas["ICU 2"]=[icu2]
+available=available.filter(x=>x!==icu2)
 
-let icu1 = available.find(x => seniorRegistrars.includes(x) || registrars.includes(x))
-areas["ICU 1"].push(icu1)
-available = available.filter(x => x !== icu1)
+let highcare=available.find(x=>medicalOfficers.includes(x))
+areas["High Care"]=[highcare]
+available=available.filter(x=>x!==highcare)
 
-let icu2 = available.find(x =>
-(registrars.includes(x) || medicalOfficers.includes(x))
-)
-areas["ICU 2"].push(icu2)
-available = available.filter(x => x !== icu2)
+let kmc=available.find(x=>interns.includes(x)||medicalOfficers.includes(x))
+areas["Pre-KMC / KMC"]=[kmc]
+available=available.filter(x=>x!==kmc)
 
-let highcare = available.find(x => medicalOfficers.includes(x))
-areas["High Care"].push(highcare)
-available = available.filter(x => x !== highcare)
+let theatre=available.find(x=>interns.includes(x)||medicalOfficers.includes(x))
+areas["Theatre"]=[theatre]
+available=available.filter(x=>x!==theatre)
 
-let kmc = available.find(x =>
-interns.includes(x) || medicalOfficers.includes(x)
-)
-areas["Pre-KMC / KMC"].push(kmc)
-available = available.filter(x => x !== kmc)
+areas["Theatre Cover"]=[icu2]
 
-let theatre = available.find(x =>
-(interns.includes(x) || medicalOfficers.includes(x)) && x !== "Waynne"
-)
-areas["Theatre"].push(theatre)
-available = available.filter(x => x !== theatre)
-
-areas["Theatre Cover"].push(icu2)
-
-let postnates = available[0]
-if(postnates){
-areas["Post-Nates"].push(postnates)
-}
+areas["Post-Nates"]=available
 
 return areas
-
 }
 
-function displayTable(onCall,postCall){
+function displayTable(postCall){
 
-let areas = [
+let areas=[
 "ICU 1",
 "ICU 2",
 "High Care",
@@ -212,58 +213,47 @@ let areas = [
 "Theatre",
 "Theatre Cover",
 "Post-Nates",
-"Post-Call",
-"On-Call"
+"Post-Call"
 ]
 
-let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
-let html = "<table>"
+let html="<table>"
 
-html += "<tr><th>Area</th>"
+html+="<tr><th>Area</th>"
 
-days.forEach(d => html += "<th>"+d+"</th>")
+days.forEach(d=>html+="<th>"+d+"</th>")
 
-html += "</tr>"
-
-days.forEach(day => {
-
-let allocations = allocateDay(day,onCall,postCall)
-
-})
+html+="</tr>"
 
 areas.forEach(area=>{
 
-html += "<tr>"
-html += "<td>"+area+"</td>"
+html+="<tr>"
+html+="<td>"+area+"</td>"
 
 days.forEach(day=>{
 
 if(area==="Post-Call"){
-html += "<td>"+(postCall[day] || []).join(" & ")+"</td>"
-}
 
-else if(area==="On-Call"){
-html += "<td>"+(onCall[day] || []).join(" & ")+"</td>"
-}
+html+="<td>"+postCall[day].join(" & ")+"</td>"
 
-else{
+}else{
 
-let allocations = allocateDay(day,onCall,postCall)
+let alloc=allocateDay(day,postCall)
 
-html += "<td>"+(allocations[area] || []).join(" & ")+"</td>"
+html+="<td>"+(alloc[area]||[]).join(" & ")+"</td>"
 
 }
 
 })
 
-html += "</tr>"
+html+="</tr>"
 
 })
 
-html += "</table>"
+html+="</table>"
 
-document.getElementById("rota").innerHTML = html
+document.getElementById("rota").innerHTML=html
 
 }
 
