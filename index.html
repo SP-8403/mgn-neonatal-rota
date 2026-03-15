@@ -5,6 +5,7 @@
 <title>MGN Neonatal Day Allocation Agent</title>
 
 <style>
+
 body{
 font-family: Arial, Helvetica, sans-serif;
 margin:40px;
@@ -42,6 +43,7 @@ th{
 background:#1f6feb;
 color:white;
 }
+
 </style>
 
 </head>
@@ -50,7 +52,7 @@ color:white;
 
 <h1>MGN Neonatal Day Allocation Agent</h1>
 
-<p>This tool reads the Groote Schuur hospital rota and extracts the neonatal post-call team.</p>
+<p>This tool reads the Groote Schuur hospital rota and generates neonatal daytime allocations.</p>
 
 <button onclick="runAgent()">Generate Weekly Allocation</button>
 
@@ -63,6 +65,28 @@ const rotaURL =
 
 const staffURL =
 "https://opensheet.elk.sh/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/MGN%20Staff"
+
+const seniorRegistrars = ["Chinelo","Naa"]
+
+const registrars = [
+"Brent",
+"Waynne",
+"Herlinde"
+]
+
+const medicalOfficers = [
+"Shannon",
+"Sanam"
+]
+
+const interns = [
+"Lezaro",
+"Mashudu",
+"Elvira",
+"Mehreen",
+"Nishoka",
+"LeeAnne"
+]
 
 function firstName(name){
 return name.split(" ")[0]
@@ -82,10 +106,9 @@ let staffData = await fetch(staffURL).then(r=>r.json())
 
 let staffList = staffData.map(x=>x["Name and Surname"])
 
-let week = rotaData.filter(x =>
-["Monday","Tuesday","Wednesday","Thursday","Friday"]
-.includes(x.Day)
-)
+let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+
+let week = rotaData.filter(row => days.includes(row.Day))
 
 let onCall = {}
 
@@ -107,8 +130,6 @@ onCall[row.Day] = names.map(firstName)
 
 let postCall = {}
 
-let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
-
 days.forEach((d,i)=>{
 
 if(i===0){
@@ -120,6 +141,64 @@ postCall[d] = onCall[days[i-1]] || []
 })
 
 displayTable(onCall,postCall)
+
+}
+
+function allocateDay(day,onCall,postCall){
+
+let areas = {
+"ICU 1":[],
+"ICU 2":[],
+"High Care":[],
+"Pre-KMC / KMC":[],
+"Theatre":[],
+"Theatre Cover":[],
+"Post-Nates":[]
+}
+
+let available = [
+...seniorRegistrars,
+...registrars,
+...medicalOfficers,
+...interns
+]
+
+available = available.filter(x => !postCall[day].includes(x))
+
+let icu1 = available.find(x => seniorRegistrars.includes(x) || registrars.includes(x))
+areas["ICU 1"].push(icu1)
+available = available.filter(x => x !== icu1)
+
+let icu2 = available.find(x =>
+(registrars.includes(x) || medicalOfficers.includes(x))
+)
+areas["ICU 2"].push(icu2)
+available = available.filter(x => x !== icu2)
+
+let highcare = available.find(x => medicalOfficers.includes(x))
+areas["High Care"].push(highcare)
+available = available.filter(x => x !== highcare)
+
+let kmc = available.find(x =>
+interns.includes(x) || medicalOfficers.includes(x)
+)
+areas["Pre-KMC / KMC"].push(kmc)
+available = available.filter(x => x !== kmc)
+
+let theatre = available.find(x =>
+(interns.includes(x) || medicalOfficers.includes(x)) && x !== "Waynne"
+)
+areas["Theatre"].push(theatre)
+available = available.filter(x => x !== theatre)
+
+areas["Theatre Cover"].push(icu2)
+
+let postnates = available[0]
+if(postnates){
+areas["Post-Nates"].push(postnates)
+}
+
+return areas
 
 }
 
@@ -147,6 +226,12 @@ days.forEach(d => html += "<th>"+d+"</th>")
 
 html += "</tr>"
 
+days.forEach(day => {
+
+let allocations = allocateDay(day,onCall,postCall)
+
+})
+
 areas.forEach(area=>{
 
 html += "<tr>"
@@ -163,7 +248,11 @@ html += "<td>"+(onCall[day] || []).join(" & ")+"</td>"
 }
 
 else{
-html += "<td></td>"
+
+let allocations = allocateDay(day,onCall,postCall)
+
+html += "<td>"+(allocations[area] || []).join(" & ")+"</td>"
+
 }
 
 })
