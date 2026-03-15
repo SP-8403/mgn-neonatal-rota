@@ -50,7 +50,7 @@ color:white;
 
 <h1>MGN Neonatal Day Allocation Agent</h1>
 
-<button onclick="runAgent()">Generate Allocation (16–20 March)</button>
+<button onclick="runAgent()">Generate Allocation</button>
 
 <div id="rota"></div>
 
@@ -89,8 +89,17 @@ return name.split(" ")[0]
 }
 
 function splitCell(cell){
-if(!cell) return []
+
+if(!cell || cell.trim()===""){
+return []
+}
+
+if(cell.includes("/")){
 return cell.split("/").map(x=>x.trim())
+}
+
+return [cell.trim()]
+
 }
 
 async function runAgent(){
@@ -102,33 +111,28 @@ let staffData = await fetch(staffURL).then(r=>r.json())
 
 let staffList = staffData.map(x=>x["Name and Surname"].split(" ")[0])
 
-let targetDates = [
-"16/03/2026",
-"17/03/2026",
-"18/03/2026",
-"19/03/2026",
-"20/03/2026"
-]
+let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
-let weekRows = rotaData.filter(r => targetDates.includes(r.Date))
+let weekRows = rotaData.filter(r => days.includes(r.Day))
 
-let sundayRow = rotaData.find(r => r.Date==="15/03/2026")
+let sundayRow = rotaData.find(r => r.Day==="Sunday")
 
-let onCall = {}
+let onCall={}
 
 function extractOnCall(row){
 
 let names=[]
 
-names = names.concat(splitCell(row["Registrar On call"]||""))
-names = names.concat(splitCell(row["Intern On call"]||""))
-names = names.concat(splitCell(row["Medical Officer on call"]||""))
+names = names.concat(splitCell(row["Registrar On call"]||row["Registrar On call "]||""))
+names = names.concat(splitCell(row["Intern On call"]||row["Intern On call "]||""))
+names = names.concat(splitCell(row["Medical Officer on call"]||row["Medical Officer on call "]||""))
 
 names = names.map(firstName)
 
 names = names.filter(n => staffList.includes(n))
 
 return names
+
 }
 
 onCall["Monday"] = extractOnCall(sundayRow)
@@ -138,8 +142,6 @@ onCall[r.Day]=extractOnCall(r)
 })
 
 let postCall={}
-
-let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
 days.forEach((d,i)=>{
 
@@ -201,6 +203,7 @@ areas["Theatre Cover"]=[icu2]
 areas["Post-Nates"]=available
 
 return areas
+
 }
 
 function displayTable(postCall){
