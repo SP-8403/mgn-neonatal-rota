@@ -90,11 +90,16 @@ document.getElementById("rota").innerHTML="Loading..."
 let rotaData = await fetch(rotaURL).then(r=>r.json())
 let staffData = await fetch(staffURL).then(r=>r.json())
 
-let staffList = staffData.map(x=>x["Name and Surname"].split(" ")[0])
+let staffRows = Array.isArray(staffData) ? staffData : Object.values(staffData)
+
+let staffList = staffRows.map(x => x["Name and Surname"].split(" ")[0])
 
 let days=["Monday","Tuesday","Wednesday","Thursday","Friday"]
 
-let weekRows = rotaData.filter(r=>days.includes(r.Day))
+let weekRows = rotaData.filter(r =>
+["Monday","Tuesday","Wednesday","Thursday","Friday"].includes(r.Day) &&
+r.Date >= "2026-03-16" && r.Date <= "2026-03-20"
+)
 
 let sundayRow = rotaData.find(r=>r.Day==="Sunday") || {}
 
