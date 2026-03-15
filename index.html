@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MGN Neonatal Day Allocation Agent</title>
+
+<style>
+body{
+font-family: Arial, Helvetica, sans-serif;
+margin:40px;
+background:#f5f7fb;
+}
+
+h1{
+color:#1c3d5a;
+}
+
+button{
+padding:12px 20px;
+background:#1f6feb;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+font-size:16px;
+}
+
+table{
+margin-top:30px;
+border-collapse:collapse;
+width:100%;
+background:white;
+}
+
+th,td{
+border:1px solid #ccc;
+padding:10px;
+text-align:center;
+}
+
+th{
+background:#1f6feb;
+color:white;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>MGN Neonatal Day Allocation Agent</h1>
+
+<p>This tool reads the Groote Schuur hospital rota and extracts the neonatal post-call team.</p>
+
+<button onclick="runAgent()">Generate Weekly Allocation</button>
+
+<div id="rota"></div>
+
+<script>
+
+const rotaURL =
+"https://opensheet.elk.sh/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/March%202026"
+
+const staffURL =
+"https://opensheet.elk.sh/1Ls5CWX7njmL6GQ5iz78R3-_RaP9ge7LUTDkYmZUfU0w/MGN%20Staff"
+
+function firstName(name){
+return name.split(" ")[0]
+}
+
+function splitCell(cell){
+if(!cell) return []
+return cell.split("/").map(x=>x.trim())
+}
+
+async function runAgent(){
+
+document.getElementById("rota").innerHTML = "Loading rota..."
+
+let rotaData = await fetch(rotaURL).then(r=>r.json())
+let staffData = await fetch(staffURL).then(r=>r.json())
+
+let staffList = staffData.map(x=>x["Name and Surname"])
+
+let week = rotaData.filter(x =>
+["Monday","Tuesday","Wednesday","Thursday","Friday"]
+.includes(x.Day)
+)
+
+let onCall = {}
+
+week.forEach(row=>{
+
+let names = []
+
+names = names.concat(splitCell(row["Registrar On call"]))
+names = names.concat(splitCell(row["Intern On call"]))
+names = names.concat(splitCell(row["Medical Officer on call"]))
+
+names = names.filter(n =>
+staffList.some(s => s.includes(n))
+)
+
+onCall[row.Day] = names.map(firstName)
+
+})
+
+let postCall = {}
+
+let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+
+days.forEach((d,i)=>{
+
+if(i===0){
+postCall[d] = []
+}else{
+postCall[d] = onCall[days[i-1]] || []
+}
+
+})
+
+displayTable(onCall,postCall)
+
+}
+
+function displayTable(onCall,postCall){
+
+let areas = [
+"ICU 1",
+"ICU 2",
+"High Care",
+"Pre-KMC / KMC",
+"Theatre",
+"Theatre Cover",
+"Post-Nates",
+"Post-Call",
+"On-Call"
+]
+
+let days = ["Monday","Tuesday","Wednesday","Thursday","Friday"]
+
+let html = "<table>"
+
+html += "<tr><th>Area</th>"
+
+days.forEach(d => html += "<th>"+d+"</th>")
+
+html += "</tr>"
+
+areas.forEach(area=>{
+
+html += "<tr>"
+html += "<td>"+area+"</td>"
+
+days.forEach(day=>{
+
+if(area==="Post-Call"){
+html += "<td>"+(postCall[day] || []).join(" & ")+"</td>"
+}
+
+else if(area==="On-Call"){
+html += "<td>"+(onCall[day] || []).join(" & ")+"</td>"
+}
+
+else{
+html += "<td></td>"
+}
+
+})
+
+html += "</tr>"
+
+})
+
+html += "</table>"
+
+document.getElementById("rota").innerHTML = html
+
+}
+
+</script>
+
+</body>
+</html>
