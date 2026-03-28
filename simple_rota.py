@@ -144,17 +144,15 @@ for date in weekday_dates:
 # PRINT
 # ---------------------------
 
-print("\nAPRIL 2026 ROSTER\n")
+import json
 
-for d in sorted(roster.keys()):
-    print(d.strftime("%d-%b"), d.strftime("%A"),
-          roster[d])
+# After roster is generated
+output = {}
 
-print("\nTOTALS\n")
+for date in sorted(roster.keys()):
+    output[date.strftime("%Y-%m-%d")] = roster[date]
 
-totals = defaultdict(int)
-for name in roster.values():
-    totals[name] += 1
+with open("roster.json", "w") as f:
+    json.dump(output, f, indent=2)
 
-for name, total in sorted(totals.items()):
-    print(name, total)
+print("Roster written to roster.json")
